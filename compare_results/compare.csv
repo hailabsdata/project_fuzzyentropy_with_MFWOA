@@ -1,0 +1,4 @@
+image,algo,thresholds,time,psnr,ssim
+lena.gray.bmp,Otsu,95;144,0.0085,13.4200,0.3235
+lena.gray.bmp,WOA,113;113,0.3690,8.9701,0.1753
+lena.gray.bmp,MFWOA,113;113,0.3435,8.9701,0.1753

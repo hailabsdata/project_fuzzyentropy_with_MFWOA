@@ -1,0 +1,30 @@
+# .github/workflows/deploy.yml
+name: Deploy-Batch
+on:
+  workflow_dispatch:
+    inputs:
+      s3_input:  { description: 's3://bucket/input/', required: true }
+      s3_output: { description: 's3://bucket/output/', required: true }
+      k:         { description: 'Số ngưỡng', required: true, default: '2' }
+      seed:      { description: 'Seed', required: true, default: '42' }
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  run-batch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-southeast-1
+      - name: Build & Push ECR
+        run: infra/scripts/build_and_push_ecr.sh
+      - name: Run ECS Task
+        run: |
+          infra/scripts/run_ecs_task.sh \
+            --s3-input "${{ inputs.s3_input }}" \
+            --s3-output "${{ inputs.s3_output }}" \
+            --k "${{ inputs.k }}" \
+            --seed "${{ inputs.seed }}"
