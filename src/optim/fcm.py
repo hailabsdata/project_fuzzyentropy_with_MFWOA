@@ -97,11 +97,40 @@ def fcm_thresholding(hist: np.ndarray, K: int, max_iter: int = 100) -> List[int]
             thresholds.append(t)
     
     # If we lost some thresholds due to duplicates, add evenly spaced ones
-    while len(thresholds) < K:
-        for i in range(len(thresholds)-1):
-            if thresholds[i+1] - thresholds[i] > 2:
-                thresholds.insert(i+1, thresholds[i] + (thresholds[i+1] - thresholds[i])//2)
-                if len(thresholds) == K:
-                    break
+    if len(thresholds) < K:
+        # Fallback: fill remaining thresholds by evenly spacing the available range
+        existing = [0] + thresholds + [255]
+        needed = K - len(thresholds)
+        # compute gaps and fill proportionally
+        new_thresholds = thresholds.copy()
+        # simple strategy: use linspace over (0..255) excluding boundaries
+        candidate = list(np.linspace(1, 254, K + 2)[1:-1].astype(int))
+        # merge candidate values preserving uniqueness and order
+        merged = []
+        for c in candidate:
+            if not new_thresholds or c > new_thresholds[-1]:
+                merged.append(c)
+            if len(merged) + len(new_thresholds) >= K:
+                break
+        # final thresholds: take existing ones and fill from merged candidates
+        thresholds = []
+        ei = 0
+        mi = 0
+        # merge sorted existing centers and new candidates
+        existing_sorted = sorted(new_thresholds)
+        while len(thresholds) < K and (ei < len(existing_sorted) or mi < len(merged)):
+            next_existing = existing_sorted[ei] if ei < len(existing_sorted) else 1e9
+            next_merged = merged[mi] if mi < len(merged) else 1e9
+            if next_existing <= next_merged:
+                if not thresholds or next_existing > thresholds[-1]:
+                    thresholds.append(next_existing)
+                ei += 1
+            else:
+                if not thresholds or next_merged > thresholds[-1]:
+                    thresholds.append(next_merged)
+                mi += 1
+        # If still short, pad with evenly spaced values
+        while len(thresholds) < K:
+            thresholds.append(1 + len(thresholds) * (253 // (K + 1)))
     
     return thresholds

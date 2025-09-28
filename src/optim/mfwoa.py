@@ -27,8 +27,8 @@ def continuous_to_thresholds(pos: np.ndarray) -> List[int]:
 def mfwoa_optimize(
     hist: np.ndarray,
     K: int,
-    pop_size: int = 30,
-    iters: int = 100,
+    pop_size: int = 100,
+    iters: int = 500,
     objective: Callable[[np.ndarray], float] = None,
     rng: np.random.Generator = None,
 ) -> Tuple[List[int], float]:

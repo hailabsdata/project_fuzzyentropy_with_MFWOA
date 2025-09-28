@@ -19,7 +19,8 @@ def histogram_from_image(image: np.ndarray) -> np.ndarray:
     """Trả về histogram 256-bin (counts) cho ảnh xám 2D."""
     if image.ndim != 2:
         raise ValueError("image must be grayscale 2D array")
-    hist, _ = np.histogram(image.ravel(), bins=256, range=(0, 255))
+    # Use range=(0,256) so intensity 255 is included (np.histogram is half-open)
+    hist, _ = np.histogram(image.ravel(), bins=256, range=(0, 256))
     return hist.astype(float)
 
 

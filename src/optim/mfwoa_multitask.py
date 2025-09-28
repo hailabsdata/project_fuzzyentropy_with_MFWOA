@@ -34,8 +34,8 @@ def continuous_to_thresholds(pos: np.ndarray, K: int) -> List[int]:
 def mfwoa_multitask(
     hists: Sequence[np.ndarray],
     Ks: Sequence[int],
-    pop_size: int = 50,
-    iters: int = 200,
+    pop_size: int = 100,
+    iters: int = 500,
     rng: np.random.Generator = None,
     rmp_init: float = 0.3,
     pop_per_task: int = None,
@@ -74,10 +74,19 @@ def mfwoa_multitask(
     # best per task
     best_pos = [None] * T
     best_score = [-np.inf] * T
+    # Ensure at least one individual per task: if any task has zero, assign by round-robin
+    counts = np.bincount(skill_factors, minlength=T)
+    if np.any(counts == 0):
+        # assign indices round-robin to ensure at least one per task
+        for i in range(pop_size):
+            skill_factors[i] = i % T
+
     for t in range(T):
         mask = (skill_factors == t)
         if mask.any():
-            idx = int(np.argmax(fitness * mask))
+            # compute masked argmax safely
+            masked = np.where(mask, fitness, -np.inf)
+            idx = int(np.argmax(masked))
             best_pos[t] = pop[idx].copy()
             best_score[t] = float(fitness[idx])
 
@@ -172,6 +181,8 @@ def mfwoa_multitask(
                 # copy elites into their positions in next_pop
                 for ei in elite_idxs:
                     next_pop[ei] = pop[ei].copy()
+                    # keep fitness consistent for elites
+                    fitness[ei] = float(fitness[ei])
         # finalize population for next generation
         pop = next_pop
         # adapt rmp simply based on recent success fraction (if no explicit schedule)

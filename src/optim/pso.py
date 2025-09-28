@@ -45,30 +45,34 @@ def pso_optimize(hist: np.ndarray, K: int, pop_size: int, iters: int,
     
     for iter in range(iters):
         # Linearly decrease inertia
-        w_iter = w * (1 - iter/iters)
-        
-        # Update velocities
-        r1, r2 = np.random.random(2)
-        velocities = (w_iter * velocities + 
-                     c1 * r1 * (pbest - particles) +
-                     c2 * r2 * (gbest - particles))
-        
+        w_iter = w * (1 - iter / iters)
+
+        # Update velocities using per-dimension random factors
+        r1 = np.random.random(particles.shape)
+        r2 = np.random.random(particles.shape)
+        velocities = (
+            w_iter * velocities
+            + c1 * r1 * (pbest - particles)
+            + c2 * r2 * (gbest - particles)
+        )
+
         # Limit velocity magnitude
         velocities = np.clip(velocities, -5.0, 5.0)
-        
+
         # Update positions
         particles = particles + velocities
-        
+
         # Enforce constraints on each particle
         for i in range(pop_size):
             particles[i] = enforce_threshold_constraints(particles[i])
-        
+
         # Update personal bests
         scores = np.array([objective(enforce_threshold_constraints(p)) for p in particles])
         improved = scores < pbest_scores
-        pbest[improved] = particles[improved]
-        pbest_scores[improved] = scores[improved]
-        
+        if np.any(improved):
+            pbest[improved] = particles[improved]
+            pbest_scores[improved] = scores[improved]
+
         # Update global best
         min_idx = pbest_scores.argmin()
         if pbest_scores[min_idx] < gbest_score:
