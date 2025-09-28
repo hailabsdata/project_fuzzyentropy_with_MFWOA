@@ -38,7 +38,10 @@ def mfwoa_multitask(
     iters: int = 200,
     rng: np.random.Generator = None,
     rmp_init: float = 0.3,
-) -> Tuple[List[List[int]], List[float]]:
+    pop_per_task: int = None,
+    elitism: int = 3,
+    rmp_schedule: Sequence[tuple] = None,
+) -> Tuple[List[List[int]], List[float], dict]:
     """Run simplified MFWOA for multiple tasks simultaneously.
 
     Args:
@@ -51,6 +54,9 @@ def mfwoa_multitask(
         rng = np.random.default_rng(123)
     T = len(Ks)
     maxK = max(Ks)
+    # allow specifying population per task; if provided, scale total pop
+    if pop_per_task is not None:
+        pop_size = int(pop_per_task) * T
     # objectives per task
     def make_obj(hist, K):
         return lambda pos: compute_fuzzy_entropy(hist, continuous_to_thresholds(pos, K))
@@ -79,12 +85,30 @@ def mfwoa_multitask(
     success_count = 0
     total_xt = 0
 
+    # history logging
+    history = {t: [] for t in range(T)}
+    nfe = 0
+
     for g in range(iters):
+        frac = g / max(1, iters)
         a = 2.0 * (1 - g / max(1, iters - 1))
+        # rmp scheduling: if provided, override rmp according to schedule
+        if rmp_schedule is not None:
+            # rmp_schedule is sequence of tuples (start_frac, end_frac, rmp_value)
+            for (s_frac, e_frac, val) in rmp_schedule:
+                if frac >= s_frac and frac < e_frac:
+                    rmp = float(val)
+                    break
+        # If single-task, we may want to force rmp to zero to avoid transfer noise
+        rmp_local = 0.0 if T == 1 else rmp
+
+        # Prepare next generation container (we will allow elitism preservation)
+        next_pop = pop.copy()
+
         for i in range(pop_size):
             sf = int(skill_factors[i])
             p_cross = rng.random()
-            if p_cross < rmp:
+            if p_cross < rmp_local:
                 # cross-task interaction: pick random other task's leader
                 other_tasks = [t for t in range(T) if t != sf]
                 if other_tasks:
@@ -122,21 +146,46 @@ def mfwoa_multitask(
             new_pos = _ensure_sorted_unique(new_pos)
             new_fit = objectives[sf](new_pos)
             total_xt += 1
+            nfe += 1
+            # replace in next_pop when improved
             if new_fit > fitness[i]:
-                pop[i] = new_pos
+                next_pop[i] = new_pos
                 fitness[i] = new_fit
                 success_count += 1
                 if new_fit > best_score[sf]:
                     best_score[sf] = float(new_fit)
                     best_pos[sf] = new_pos.copy()
-        # adapt rmp simply based on recent success fraction
-        if total_xt > 0 and g % 10 == 0 and g > 0:
-            frac = success_count / (total_xt + EPS)
+
+        # apply elitism: preserve top-N individuals per task into next_pop
+        if elitism and elitism > 0:
+            for t in range(T):
+                mask = (skill_factors == t)
+                if np.count_nonzero(mask) == 0:
+                    continue
+                # select indices of mask sorted by fitness desc
+                idxs = np.where(mask)[0]
+                # if fewer individuals than elitism, preserve all
+                if idxs.size <= elitism:
+                    continue
+                sorted_idxs = idxs[np.argsort(-fitness[idxs])]
+                elite_idxs = sorted_idxs[:elitism]
+                # copy elites into their positions in next_pop
+                for ei in elite_idxs:
+                    next_pop[ei] = pop[ei].copy()
+        # finalize population for next generation
+        pop = next_pop
+        # adapt rmp simply based on recent success fraction (if no explicit schedule)
+        if rmp_schedule is None and total_xt > 0 and g % 10 == 0 and g > 0:
+            frac_succ = success_count / (total_xt + EPS)
             # nudge rmp toward observed success (clamped)
-            rmp = float(np.clip(0.5 * rmp + 0.5 * frac, 0.05, 0.95))
+            rmp = float(np.clip(0.5 * rmp + 0.5 * frac_succ, 0.05, 0.95))
             # reset counters
             success_count = 0
             total_xt = 0
+        # log best per-task for history
+        for t in range(T):
+            history[t].append(best_score[t])
     # finalize best thresholds
     best_thresholds = [continuous_to_thresholds(best_pos[t], Ks[t]) if best_pos[t] is not None else [] for t in range(T)]
-    return best_thresholds, [float(s) for s in best_score]
+    diagnostics = {'history': history, 'nfe': nfe}
+    return best_thresholds, [float(s) for s in best_score], diagnostics

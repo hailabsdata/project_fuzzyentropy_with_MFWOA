@@ -8,6 +8,11 @@ import numpy as np
 from typing import Literal, Sequence
 
 EPS = 1e-12
+# When a threshold set produces empty classes, we treat the true FE as invalid/zero
+# for plotting and comparison (FE_true). For optimizers we still need a strong
+# penalty so they avoid such solutions; set FITNESS_PENALTY to a large positive
+# value returned when for_minimization=True and classes are empty.
+FITNESS_PENALTY = 1e6
 
 
 def histogram_from_image(image: np.ndarray) -> np.ndarray:
@@ -61,7 +66,8 @@ MembershipType = Literal["triangular", "gaussian"]
 
 
 def compute_fuzzy_entropy(
-    hist: np.ndarray, thresholds: Sequence[int], membership: MembershipType = "triangular"
+    hist: np.ndarray, thresholds: Sequence[int], membership: MembershipType = "triangular",
+    for_minimization: bool = False
 ) -> float:
     """Tính tổng Fuzzy Entropy cho một tập ngưỡng.
 
@@ -69,27 +75,48 @@ def compute_fuzzy_entropy(
         hist: 256-bin histogram (counts).
         thresholds: iterable các ngưỡng trong [0..255], not necessarily sorted.
         membership: 'triangular' hoặc 'gaussian'.
+        for_minimization: Nếu True, trả về -entropy cho bài toán tối thiểu hóa.
 
     Returns:
-        tổng entropy (float). Lớn hơn là tốt hơn.
+        Entropy value (hoặc -entropy nếu for_minimization=True).
+        Lớn hơn là tốt hơn (khi for_minimization=False).
     """
     if hist.shape[0] != 256:
         raise ValueError("hist must be length-256 array")
-    th = np.array(sorted(int(t) for t in thresholds))
-    # define centers: include 0 and 255 as boundary centers
+    
+    # Chuẩn hóa histogram
+    p_levels = hist / (np.sum(hist) + EPS)
+    
+    # Ràng buộc ngưỡng
+    th = np.array([int(t) for t in thresholds])
+    from src.seg.utils import enforce_threshold_constraints
+    th = enforce_threshold_constraints(th)
+    
+    # Define centers and compute membership
     centers = np.concatenate(([0.0], th.astype(float), [255.0]))
-    C = centers.size
     if membership == "triangular":
         mu = _triangular_membership(centers)
     elif membership == "gaussian":
         mu = _gaussian_membership(centers)
     else:
         raise ValueError("unknown membership")
-    # normalize histogram to probability mass per gray level
-    p_levels = hist / (np.sum(hist) + EPS)
-    # fuzzy probability per class: sum over gray levels of mu * p_levels
+    
+    # Compute class probabilities
     p_classes = mu.dot(p_levels)
-    # avoid zeros
-    p_classes = np.clip(p_classes, EPS, 1.0)
-    H = -np.sum(p_classes * np.log(p_classes))
-    return float(H)
+    
+    # Penalize empty classes: produce a well-defined FE_true and a separate
+    # fitness penalty for minimizers. FE_true is defined as 0.0 when any class
+    # is empty (so plotting/comparison is stable). For minimization (optimizers)
+    # return a large positive penalty so the optimizer steers away from invalid
+    # threshold sets.
+    if np.any(p_classes < EPS):
+        # invalid split: no meaningful entropy
+        fe_true = 0.0
+        if for_minimization:
+            return float(FITNESS_PENALTY)
+        else:
+            return float(fe_true)
+    else:
+        # Compute entropy with numerical stability
+        H = -np.sum(p_classes * np.log(p_classes + EPS))
+        return float(-H if for_minimization else H)

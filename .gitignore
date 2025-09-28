@@ -1,0 +1,30 @@
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Logs & cache
+*.log
+.cache/
+.dist/
+build/
+dist/
+*.egg-info/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# (tuỳ bạn) dữ liệu nặng, model
+data/
+outputs/
+artifacts/
+*.pt
+*.pth
