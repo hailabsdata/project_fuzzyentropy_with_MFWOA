@@ -3,7 +3,11 @@ Phân đoạn ảnh xám sử dụng thuật toán MFWOA dựa trên độ đo m
 Quick start (PowerShell):
 
 # cài môi trường
-python -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -r requirements.txt
+python -m venv .venv; 
+
+.\.venv\Scripts\Activate.ps1;
+
+pip install -r requirements.txt
 
 # chạy tối ưu cho ảnh
 python -m src.cli.optimize --image path\to\lena.png --K 2 --pop 30 --iters 100
