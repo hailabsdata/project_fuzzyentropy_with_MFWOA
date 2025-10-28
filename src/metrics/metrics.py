@@ -53,3 +53,24 @@ def ssim(original: np.ndarray, compared: np.ndarray, data_range: float = 255.0, 
 	ssim_map = num / (den + 1e-12)
 	return float(np.mean(ssim_map))
 
+def dice_macro(pred_labels: np.ndarray, gt_labels: np.ndarray, labels=None, eps=1e-9):
+    """
+    Dice cho phân đoạn đa lớp (macro-average).
+    - pred_labels, gt_labels: ảnh nhãn (HxW), kiểu int
+    - labels: danh sách lớp cần tính; mặc định = hợp các lớp có trong GT/pred
+    Trả về: mean Dice ∈ [0..1] (NaN nếu không lớp nào hợp lệ)
+    """
+    if pred_labels.shape != gt_labels.shape:
+        raise ValueError("dice_macro: pred và gt phải cùng kích thước")
+    if labels is None:
+        labels = np.unique(np.concatenate([np.unique(gt_labels), np.unique(pred_labels)]))
+    dices = []
+    for c in labels:
+        p = (pred_labels == c)
+        g = (gt_labels == c)
+        denom = p.sum() + g.sum()
+        if denom == 0:   # lớp không xuất hiện ở cả hai
+            continue
+        inter = (p & g).sum()
+        dices.append((2.0 * inter + eps) / (denom + eps))
+    return float(np.mean(dices)) if len(dices) else np.nan
